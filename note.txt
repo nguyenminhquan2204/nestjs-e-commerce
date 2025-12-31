@@ -1,0 +1,8 @@
+1. nest new ecom
+2. npm i prisma -D
+3. npx prisma init
+4. npx prisma db push
+5. npm i zod dotenv
+6. npm i @nestjs/jwt
+7. npm i bcrypt
+8. npm i @types/bcrypt -D
