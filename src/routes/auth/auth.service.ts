@@ -8,6 +8,8 @@ import { AuthRepository } from './auth.repo'
 import { ShareUserRepository } from 'src/shared/repositories/share-user.repo'
 import envConfig from 'src/shared/config'
 import ms from 'ms'
+import { TypeOfVerificationCode } from 'src/shared/constant/auth.constant'
+import { EmailService } from 'src/shared/services/email.service'
 
 @Injectable()
 export class AuthService {
@@ -15,11 +17,31 @@ export class AuthService {
     private readonly hashingService: HashingService,
     private readonly rolesService: RolesService,
     private readonly authRepository: AuthRepository,
-    private readonly sharedUserRepository: ShareUserRepository
+    private readonly sharedUserRepository: ShareUserRepository,
+    private readonly emailService: EmailService,
   ) {}
 
   async register(body: RegisterBodyType) {
     try {
+      const verificationCode = await this.authRepository.findUniqueVerificationCode(body.email, body.code, TypeOfVerificationCode.REGISTER);
+      if(!verificationCode) {
+        throw new UnprocessableEntityException([
+          {
+            message: 'OTP invalid',
+            path: 'code'
+          }
+        ])
+      }
+
+      if(verificationCode.expiresAt < new Date()) {
+        throw new UnprocessableEntityException([
+          {
+            message: 'OTP has expired',
+            path: 'code'
+          }
+        ])
+      }
+
       const clientRoleId = await this.rolesService.getClientRoleId()
       const hashedPassword = await this.hashingService.hash(body.password)
 
@@ -62,6 +84,19 @@ export class AuthService {
       expiresAt: addMilliseconds(new Date(), ms(envConfig.OTP_EXPIRES_IN as ms.StringValue))
     })
 
+    const { data, error } = await this.emailService.sendOTP({
+      email: body.email,
+      code
+    })
+    if(error) {
+      console.log('Error sending OTP email:', error);
+      throw new UnprocessableEntityException([
+        {
+          message: 'Failed to send OTP email',
+          path: 'code'
+        }
+      ])
+    }
 
     return verificationCode;
   }

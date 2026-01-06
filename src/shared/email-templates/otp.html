@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{{subject}}</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      background-color: #f4f6f8;
+      font-family: Arial, Helvetica, sans-serif;
+    }
+
+    .container {
+      max-width: 600px;
+      margin: 40px auto;
+      background: #ffffff;
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    }
+
+    .header {
+      background: linear-gradient(135deg, #4f46e5, #6366f1);
+      color: #ffffff;
+      text-align: center;
+      padding: 24px;
+    }
+
+    .header h1 {
+      margin: 0;
+      font-size: 24px;
+    }
+
+    .content {
+      padding: 32px;
+      color: #333333;
+      line-height: 1.6;
+    }
+
+    .content p {
+      margin: 0 0 16px;
+    }
+
+    .otp-box {
+      margin: 24px 0;
+      text-align: center;
+    }
+
+    .otp-code {
+      display: inline-block;
+      padding: 16px 32px;
+      font-size: 28px;
+      font-weight: bold;
+      letter-spacing: 6px;
+      color: #4f46e5;
+      background: #eef2ff;
+      border-radius: 8px;
+    }
+
+    .warning {
+      font-size: 14px;
+      color: #6b7280;
+      margin-top: 24px;
+    }
+
+    .footer {
+      background: #f9fafb;
+      text-align: center;
+      padding: 16px;
+      font-size: 12px;
+      color: #9ca3af;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>{{subject}}</h1>
+    </div>
+
+    <div class="content">
+      <p>Xin chào 👋,</p>
+
+      <p>
+        Bạn vừa yêu cầu mã xác thực (OTP) cho tài khoản của mình.
+        Vui lòng sử dụng mã bên dưới để tiếp tục:
+      </p>
+
+      <div class="otp-box">
+        <div class="otp-code">{{code}}</div>
+      </div>
+
+      <p>
+        Mã OTP này chỉ có hiệu lực trong vài phút.
+        Vui lòng không chia sẻ mã này cho bất kỳ ai.
+      </p>
+
+      <p class="warning">
+        Nếu bạn không thực hiện yêu cầu này, vui lòng bỏ qua email này.
+      </p>
+    </div>
+
+    <div class="footer">
+      © 2026 E-commerce. All rights reserved.
+    </div>
+  </div>
+</body>
+</html>
