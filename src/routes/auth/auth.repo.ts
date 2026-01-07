@@ -1,6 +1,6 @@
 import { Injectable } from "@nestjs/common";
 import { PrismaService } from "src/shared/services/prisma.service";
-import { RegisterBodyType } from "./auth.model";
+import { DeviceType, RegisterBodyType, RoleType } from "./auth.model";
 import { UserType } from "src/shared/models/share-user.model";
 import { VerificationCodeType } from "./auth.model";
 import { VerificationCode } from "@prisma/client";
@@ -44,6 +44,25 @@ export class AuthRepository {
             email: email,
             code: code,
             type: type
+         }
+      })
+   }
+
+   async createRefreshToken(data: {token: string; userId: number; expiresAt: Date; deviceId: number}) {
+      return this.prismaService.refreshToken.create({ data });
+   }
+
+   async createDevice(data: Pick<DeviceType, 'userId' | 'userAgent' | 'ip'> & 
+      Partial<Pick<DeviceType, 'lastActive' | 'isActive'>>
+   ) {
+      return this.prismaService.device.create({ data });
+   }
+
+   async findUniqueIncludeRole(uniqueObject: { email: string} | { id: number}): Promise<UserType & { role: RoleType } | null> {
+      return this.prismaService.user.findUnique({
+         where: uniqueObject,
+         include: {
+            role: true
          }
       })
    }
