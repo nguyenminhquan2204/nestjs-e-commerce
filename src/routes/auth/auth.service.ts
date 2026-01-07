@@ -1,9 +1,9 @@
-import { ConflictException, Injectable, UnauthorizedException, BadRequestException, UnprocessableEntityException } from '@nestjs/common'
+import { ConflictException, Injectable, UnauthorizedException, BadRequestException, UnprocessableEntityException, HttpException } from '@nestjs/common'
 import { HashingService } from 'src/shared/services/hashing.service'
 import { addMilliseconds } from 'date-fns'
 import { RolesService } from './roles.service'
 import { isUniqueConstraintPrismaError, isNotFoundPrismaError, generateOTP } from 'src/shared/helpers'
-import { LoginBodyType, RegisterBodyType, SendOTPBodyType } from './auth.model'
+import { LoginBodyType, RefreshTokenBodyType, RegisterBodyType, SendOTPBodyType } from './auth.model'
 import { AuthRepository } from './auth.repo'
 import { ShareUserRepository } from 'src/shared/repositories/share-user.repo'
 import envConfig from 'src/shared/config'
@@ -163,29 +163,37 @@ export class AuthService {
     return { accessToken, refreshToken}
   }
 
-//    async refreshToken(refreshToken: string) {
-//       try {
-//          const { userId } = await this.tokenService.verifyRefreshToken(refreshToken);
-//          await this.prismaService.refreshToken.findUniqueOrThrow({
-//             where: {
-//                token: refreshToken
-//             }
-//          })
+  async refreshToken({ refreshToken, ip, userAgent }: RefreshTokenBodyType & { userAgent: string; ip: string}) {
+    try {
+        const { userId } = await this.tokenService.verifyRefreshToken(refreshToken);
+        const refreshTokenInDb = await this.authRepository.findUniqueRefreshTokenIncludeUserRole({
+          token: refreshToken
+        })
+        if(!refreshTokenInDb) {
+          throw new UnauthorizedException('Refresh token not found!');
+        }
+        const { deviceId, user: { roleId, name: roleName} } = refreshTokenInDb;
+        const $updateDevice = this.authRepository.updateDevice(deviceId, {
+          ip: ip,
+          userAgent: userAgent
+        })
 
-//          await this.prismaService.refreshToken.delete({
-//             where: {
-//                token: refreshToken
-//             }
-//          })
-//          return await this.generateTokens({ userId });
-//       } catch (error) {
-//          // case refresh token notify user
-//          if(isNotFoundPrismaError(error)) {
-//             throw new UnauthorizedException('Refresh token has been revoked');
-//          }
-//          throw new UnauthorizedException();
-//       }
-//    }
+        const $deleteRefreshToken = this.authRepository.deleteRefreshToken({
+          token: refreshToken
+        })
+    
+        const $tokens = this.generateTokens({ userId, roleId, roleName, deviceId });
+
+        const [, , tokens] = await Promise.all([$updateDevice, $deleteRefreshToken, $tokens]);
+
+        return tokens;
+    } catch (error) {
+      if(error instanceof HttpException) {
+        throw error;
+      }
+      throw new UnauthorizedException();
+    }
+  }
 
 //    async logout(refreshToken: string) {
 //       try {
