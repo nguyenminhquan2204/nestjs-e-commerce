@@ -100,7 +100,7 @@ export class AuthService {
       ])
     }
 
-    return verificationCode;
+    return { message: 'Send OTP successfully!. Plz check email.' };
   }
 
   async login(body: LoginBodyType & { userAgent: string; ip: string }) {
@@ -195,20 +195,24 @@ export class AuthService {
     }
   }
 
-//    async logout(refreshToken: string) {
-//       try {
-//          await this.tokenService.verifyRefreshToken(refreshToken);
-//          await this.prismaService.refreshToken.delete({
-//             where: {
-//                token: refreshToken
-//             }
-//          })
-//          return { message: 'Logout successful' };
-//       } catch (error) {
-//          if(isNotFoundPrismaError(error)) {
-//             throw new UnauthorizedException('Refresh token has been revoked');
-//          }
-//          throw new UnauthorizedException();
-//       }
-//    }
+  async logout(refreshToken: string) {
+    try {
+        await this.tokenService.verifyRefreshToken(refreshToken);
+        
+        const deletedRefreshToken = await this.authRepository.deleteRefreshToken({
+          token: refreshToken
+        })
+        
+        await this.authRepository.updateDevice(deletedRefreshToken.deviceId, {
+          isActive: false
+        })
+
+        return { message: 'Logout successful' };
+    } catch (error) {
+        if(isNotFoundPrismaError(error)) {
+          throw new UnauthorizedException('Refresh token has been revoked');
+        }
+        throw new UnauthorizedException();
+    }
+  }
 }
