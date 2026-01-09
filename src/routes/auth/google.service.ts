@@ -3,12 +3,22 @@ import { google } from 'googleapis';
 import envConfig from "src/shared/config";
 import { OAuth2Client } from 'google-auth-library';
 import { GoogleAuthStateType } from "./auth.model";
+import { AuthRepository } from "./auth.repo";
+import { HashingService } from "src/shared/services/hashing.service";
+import { RolesService } from "./roles.service";
+import { v4 as uuidv4 } from 'uuid';
+import { AuthService } from "./auth.service";
 
 @Injectable()
 export class GoogleService {
    private oauth2Client: OAuth2Client
 
-   constructor() {
+   constructor(
+      private readonly authRepository: AuthRepository,
+      private readonly hashingService: HashingService,
+      private readonly rolesService: RolesService,
+      private readonly authService: AuthService,
+   ) {
       this.oauth2Client = new google.auth.OAuth2(
          envConfig.GOOGLE_CLIENT_ID,
          envConfig.GOOGLE_CLIENT_SECRET,
@@ -32,5 +42,71 @@ export class GoogleService {
       })
 
       return { url }
+   }
+
+   async googleCallback({code, state}: {code: string, state: string}) {
+      try {
+         let userAgent = 'Unknown';
+         let ip = 'Unknown';
+
+         // Lay state tu url
+         try {
+            if(state) {
+               const clientInfo = JSON.parse(Buffer.from(state, 'base64').toString()) as GoogleAuthStateType
+               userAgent = clientInfo.userAgent;
+               ip = clientInfo.ip;
+            }
+         } catch (error) {
+            console.error('Error parsing state', error)
+         }
+
+         // Dung code lay tokens
+         const { tokens } = await this.oauth2Client.getToken(code);
+         this.oauth2Client.setCredentials(tokens);
+
+         // lay thong tin user
+         const oauth2 = google.oauth2({
+            auth: this.oauth2Client,
+            version: 'v2'
+         })
+         const { data } = await oauth2.userinfo.get()
+         if(!data.email) {
+            throw new Error('Email not found!')
+         }
+
+         let user = await this.authRepository.findUniqueIncludeRole({
+            email: data.email
+         })
+         // Neu no co user => la client moi, process create account
+         if(!user) {
+            const clientRoleId = await this.rolesService.getClientRoleId();
+            const randomPassword = uuidv4()
+            const passwordHash = await this.hashingService.hash(randomPassword);
+
+            user = await this.authRepository.createUserIncludeRole({
+               email: data.email,
+               name: data.name ?? '',
+               password: passwordHash,
+               roleId: clientRoleId,
+               phoneNumber: '',
+               avatar: data.picture ?? null
+            })
+         }
+         const device = await this.authRepository.createDevice({
+            userId: user.id,
+            userAgent,
+            ip
+         })
+         const authTokens = await this.authService.generateTokens({
+            userId: user.id,
+            deviceId: device.id,
+            roleId: user.roleId,
+            roleName: user.role.name
+         })
+         return authTokens;
+      } catch (error) {
+         console.error('Error in google callback', error);
+         throw error;
+      }
    }
 }
