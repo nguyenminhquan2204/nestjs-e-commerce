@@ -51,8 +51,26 @@ export const SendOTPBodySchema = VerificationCodeSchema.pick({
 
 export const LoginBodySchema = UserSchema.pick({
    email: true,
-   password: true
-}).strict()
+   password: true,
+}).extend({
+   totpCode: z.string().length(6).optional(), // 2FA code
+   code: z.string().length(6).optional()
+}).strict().superRefine(({ totpCode, code}, ctx) => {
+   // Neu truyen cung luc totpCode, code throw error
+   const message = 'Bản chỉ nên truyền 1 tham số là totpCode hoặc otp'
+   if((totpCode !== undefined) && (code !== undefined)) {
+      ctx.addIssue({
+         path: ['totpCode'],
+         message,
+         code: 'custom'
+      })
+      ctx.addIssue({
+         path: ['code'],
+         message,
+         code: 'custom'
+      })
+   }
+})
 
 export const LoginResSchema = z.object({
    accessToken: z.string(),
@@ -116,6 +134,30 @@ export const ForgotPasswordBodySchema = z
       }
    })
 
+export const DisableTwoFactorBodySchema = z.object({
+   totpCode: z.string().length(6).optional(),
+   code: z.string().length(6).optional(),
+}).superRefine(({ totpCode, code }, ctx) => {
+   const message = 'Bạn phải cung cấp mã xác thực 2FA hoặc mã OTP. Không cung cấp cả 2!'
+   if((totpCode !== undefined) === (code !== undefined)) {
+      ctx.addIssue({
+         path: ['totpCode'],
+         message,
+         code: 'custom'
+      })
+      ctx.addIssue({
+         path: ['code'],
+         message,
+         code: 'custom'
+      })
+   }
+})
+
+export const TwoFactorSetupResSchema = z.object({
+   secret: z.string(),
+   uri: z.string()
+})
+
 export type RoleType = z.infer<typeof RoleShema>;
 export type RegisterBodyType = z.infer<typeof RegisterBodySchema>;
 export type RegisterResType = z.infer<typeof RegisterResSchema>;
@@ -131,3 +173,6 @@ export type LogoutBodyType = z.infer<typeof LogoutBodySchema>;
 export type GoogleAuthStateType = z.infer<typeof GoogleAuthStateSchema>;
 export type GetAuthorizationUrlResType = z.infer<typeof GetAuthorizationUrlResSchema>;
 export type ForgotPasswordBodyType = z.infer<typeof ForgotPasswordBodySchema>;
+export type DisableTwoFactorBodyType = z.infer<typeof DisableTwoFactorBodySchema>;
+export type TwoFactorSetupResType = z.infer<typeof TwoFactorSetupResSchema>;
+ 

@@ -3,7 +3,7 @@ import { HashingService } from 'src/shared/services/hashing.service'
 import { addMilliseconds } from 'date-fns'
 import { RolesService } from './roles.service'
 import { isUniqueConstraintPrismaError, isNotFoundPrismaError, generateOTP } from 'src/shared/helpers'
-import { ForgotPasswordBodyType, LoginBodyType, RefreshTokenBodyType, RegisterBodyType, SendOTPBodyType } from './auth.model'
+import { DisableTwoFactorBodyType, ForgotPasswordBodyType, LoginBodyType, RefreshTokenBodyType, RegisterBodyType, SendOTPBodyType } from './auth.model'
 import { AuthRepository } from './auth.repo'
 import { ShareUserRepository } from 'src/shared/repositories/share-user.repo'
 import envConfig from 'src/shared/config'
@@ -11,7 +11,8 @@ import ms from 'ms'
 import { TypeOfVerificationCode, TypeOfVerificationCodeType } from 'src/shared/constant/auth.constant'
 import { EmailService } from 'src/shared/services/email.service'
 import { TokenService } from 'src/shared/services/token.service'
-import { EmailAlreadyExistsException, EmailNotFoundException, FailedToSendOTPException, InvalidOTPException, OTPExpiredException } from './error.model'
+import { EmailAlreadyExistsException, EmailNotFoundException, FailedToSendOTPException, InvalidOTPException, InvalidTOTPAndCodeException, InvalidTOTPException, OTPExpiredException, TOTPAlreadyEnabledException, TOTPNotEnabledException } from './error.model'
+import { TwoFactorService } from 'src/shared/services/2fa.service'
 
 @Injectable()
 export class AuthService {
@@ -21,11 +22,12 @@ export class AuthService {
     private readonly authRepository: AuthRepository,
     private readonly sharedUserRepository: ShareUserRepository,
     private readonly emailService: EmailService,
-    private readonly tokenService: TokenService
+    private readonly tokenService: TokenService,
+    private readonly twoFactorService: TwoFactorService
   ) {}
 
   async validateVerificationCode({ email, code, type }: { email: string, code: string, type: TypeOfVerificationCodeType}) {
-    const verificationCode = await this.authRepository.findUniqueVerificationCode(email, code, type);
+    const verificationCode = await this.authRepository.findUniqueVerificationCode({ email_code_type: { email, code, type }});
     if(!verificationCode) throw InvalidOTPException;
     if(verificationCode.expiresAt < new Date()) throw OTPExpiredException;
 
@@ -45,11 +47,11 @@ export class AuthService {
           password: hashedPassword,
           roleId: clientRoleId,
         }),
-        this.authRepository.deleteVerificationCode({
+        this.authRepository.deleteVerificationCode({email_code_type: {
           email: body.email,
           code: body.code,
           type: TypeOfVerificationCode.REGISTER
-        })
+        }})
       ]); 
       return user;
     } catch (error) {
@@ -85,14 +87,7 @@ export class AuthService {
     const user = await this.authRepository.findUniqueIncludeRole({
       email: body.email
     })
-    if(!user) {
-      throw new UnprocessableEntityException([
-        {
-          message: 'Email is not found!',
-          path: 'email'
-        }
-      ])
-    }
+    if(!user) throw EmailNotFoundException;
 
     const isPasswordMatch = await this.hashingService.compare(body.password, user.password);
     if(!isPasswordMatch) {
@@ -102,6 +97,26 @@ export class AuthService {
           path: 'password'
         }
       ])
+    }
+
+    if(user.totpSecret) {
+      if(!body.totpCode && !body.code) throw InvalidTOTPAndCodeException
+
+      // Kiem tra TOTPcode valid hay khong ?
+      if(body.totpCode) {
+        const isValid = this.twoFactorService.verifyTOTP({
+          email: user.email,
+          secret: user.totpSecret,
+          token: body.totpCode
+        })
+        if(!isValid) throw InvalidTOTPException;
+      } else if(body.code) {
+        await this.validateVerificationCode({
+          email: user.email,
+          code: body.code,
+          type: TypeOfVerificationCode.LOGIN
+        })
+      }
     }
 
     const device = await this.authRepository.createDevice({
@@ -209,15 +224,60 @@ export class AuthService {
       this.authRepository.updateUser({ id: user.id }, {
         password: hashedPassword
       }),
-      this.authRepository.deleteVerificationCode({
+      this.authRepository.deleteVerificationCode({ email_code_type: {
         email,
         code,
         type: TypeOfVerificationCode.FORGOT_PASSWORD
-      })
+      }})
     ])
 
     return {
       message: 'Update password successfully!'
     }
+  }
+
+  async setupTwoFactorAuth(userId: number) {
+    // lay thong tin user, xem ho da bat 2fa chua
+    const user = await this.sharedUserRepository.findUnique({ id: userId })
+    if(!user) throw EmailNotFoundException;
+    if(user.totpSecret) throw TOTPAlreadyEnabledException;
+
+    // tao secret va uri
+    const { secret, uri } = this.twoFactorService.generateTOTPSecret(user.email);
+    
+    // cap nhat secret vao user trong database
+    await this.authRepository.updateUser({ id: userId }, { totpSecret: secret })
+
+    // return
+    return { secret, uri }
+  }
+
+  async disableTwoFactorAuth(data: DisableTwoFactorBodyType & { userId: number }) {
+    const { userId, totpCode, code } = data;
+    // Lay thong tin user, check existing 2FA chua ?
+    const user = await this.sharedUserRepository.findUnique({ id: userId });
+    if(!user) throw EmailNotFoundException;
+    if(!user.totpSecret) throw TOTPNotEnabledException;
+
+    // Kiem tra ma TOTP hop le khong ?
+    if(totpCode) {
+      const isValid = this.twoFactorService.verifyTOTP({
+        email: user.email,
+        secret: user.totpSecret,
+        token: totpCode
+      })
+      if(!isValid) throw InvalidTOTPException;
+    } else if(code) {
+      // Kiem tra ma OTP email hop le khong
+      await this.validateVerificationCode({
+        email: user.email,
+        code,
+        type: TypeOfVerificationCode.DISABLE_2FA
+      })
+    }
+
+    // Update secret -> null
+    await this.authRepository.updateUser({ id: userId }, { totpSecret: null });
+    return { message: 'Disable 2FA successfully!'}
   }
 }
