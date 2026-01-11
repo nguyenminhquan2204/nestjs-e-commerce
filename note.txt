@@ -9,3 +9,10 @@
 9. npm i ms date-fns
 10. npm i resend
 
+---------Migration-----------
+1. npx prisma migrate dev --create-only
+2. npx prisma migrate dev
+
+- Failed: marked rollback
+3. npx prisma migrate resolve --rolled-back <migration-name>
+4. npx prisma migrate deploy
