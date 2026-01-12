@@ -21,8 +21,6 @@ export class PermissionController {
    @Get(':permissionId')
    @ZodSerializerDto(GetPermissionDetailResDTO)
    findById(@Param() params: GetPermissionParamsDTO) {
-      console.log(typeof params.permissionId);
-      console.log(params.permissionId);
       return this.permissionService.findById(params.permissionId);
    }
 
